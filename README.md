@@ -10,6 +10,9 @@ BitBlit API is a powerful, easy-to-use 2D graphics library written in C++ design
 - **Blend Modes**: Includes 12 different blend modes for pixel blending to create various visual effects.
 - **Tiling Modes**: Supports multiple tiling modes like repeating, clamping, and mirroring to enhance texture mapping.
 
+## Acknowledgements
+This project was initially started as an assigment for CS345 – Graphics Software Architecture at Duke University. [Dr. Mike Reed](https://cs.unc.edu/person/mike-reed/) taught the course and provided the code found in the `apps` and `include` files. 
+
 <!-- ## Getting Started
 
 ### Prerequisites
