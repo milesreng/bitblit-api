@@ -62,9 +62,6 @@ void MyCanvas::drawConvexPolygon(const GPoint* pts, int count, const GPaint& pai
 
   // map points using top of stack
   mat.mapPoints(dst, pts, count);
-
-  // dst should now contain the transformed list of points
-  // we can clip as normal
   
   std::vector<Segment> segments;
 
@@ -73,11 +70,6 @@ void MyCanvas::drawConvexPolygon(const GPoint* pts, int count, const GPaint& pai
   
   std::sort(segments.begin(), segments.end());
 
-  // for (int i = 0; i < segments.size(); i++) {
-  //   std::cout << segments[i].top << " -> " << segments[i].bottom << std::endl;
-  // }
-
-  // std::cout << "---" << std::endl;
   BlendProc blendMode = gProcs[(int) paint.getBlendMode()];
 
   if (paint.getShader()) {
@@ -105,7 +97,6 @@ void MyCanvas::drawConvexPolygon(const GPoint* pts, int count, const GPaint& pai
 }
 
 void MyCanvas::drawPath(const GPath& path, const GPaint& paint) {
-  // std::cout << " --- bm of size " << fDevice.width() << "x" << fDevice.height() << " ---" << std::endl;
   GMatrix mat = ctm[ctm.size() - 1];
   GPath transform = path;
   transform.transform(mat);
@@ -140,17 +131,8 @@ void MyCanvas::drawPath(const GPath& path, const GPaint& paint) {
   if (segments.size() < 2) return;
   
   std::sort(segments.begin(), segments.end(), SegmentComparator());
-
-  // for (int i = 0; i < segments.size(); i++) {
-  //   std::cout << segments[i].top << " -> " << segments[i].bottom << " at x = " << segments[i].getIntersect() << " with w = " << segments[i].winding << std::endl;
-  // }
     
   BlendProc blendMode = gProcs[(int) paint.getBlendMode()];
-
-  // GColor temp = GColor::RGBA(0.5, 0, 0.5, 1);
-  // GPixel src = color_to_pixel(temp);
-
-  // fill_path(fDevice, segments, src, blendMode);
 
   if (paint.getShader()) {
     GShader* sh = paint.getShader();
@@ -217,26 +199,22 @@ void MyCanvas::drawMesh(const GPoint verts[], const GColor colors[], const GPoin
 
       GShader* sh = GCreateTriangleGradient(p, c);
 
-      // if (texs) {
-      //   t[0] = texs[indices[n]];       
-      //   t[1] = texs[indices[n+1]];       
-      //   t[2] = texs[indices[n+2]];
+      if (texs) {
+        t[0] = texs[indices[n]];       
+        t[1] = texs[indices[n+1]];       
+        t[2] = texs[indices[n+2]];
 
-      //   GMatrix points = compute_basis(p[0], p[1], p[2]);
-      //   GMatrix textures = compute_basis(t[0], t[1], t[2]);
+        GShader* orig = paint.getShader();
 
-      //   auto inv = textures.invert();
-      //   GMatrix res = points * (*inv);
-
-      //   ProxyShader proxy(sh, res);
-      //   GPaint paint(&proxy);
-
-      //   drawConvexPolygon(p, 3, paint);
-          
-      // } else {
-      // }
+        auto proxy = GCreateProxyShader(verts, t, orig);
+        auto compose = GCreateComposeShader(sh, proxy.get());
+        GPaint pnt = GPaint(compose.get());
+        
+        drawConvexPolygon(p, 3, pnt);
+      } else {
         GPaint pnt = GPaint(sh);
         drawConvexPolygon(p, 3, pnt);
+      }
 
     } else if (texs) {
       t[0] = texs[indices[n]];       
@@ -353,9 +331,7 @@ void MyCanvas::drawQuad(const GPoint verts[4], const GColor colors[4], const GPo
   } else {
     drawMesh(pts, nullptr, nullptr, quadCount * 2, indices, paint);
   }
-
 }
-
 
   // drawing quad with cubic sides
     // Coon's patch: 
@@ -365,35 +341,157 @@ void MyCanvas::drawQuad(const GPoint verts[4], const GColor colors[4], const GPo
         // p + (p_v - p) + (p_u - p)
         // = p_u + p_v - p
 
+/**
+         *  Draw the quad, with optional color and/or texture coordinate at each corner. Tesselate
+         *  the quad based on "level":
+         *      level == 0 --> 1 quad  -->  2 triangles
+         *      level == 1 --> 4 quads -->  8 triangles
+         *      level == 2 --> 9 quads --> 18 triangles
+         *      ...
+         *  The 4 corners of the quad are specified in this order:
+         *      top-left --> top-right --> bottom-right --> bottom-left
+         *  Each quad is triangulated on the diagonal top-right --> bottom-left
+         *      0---1
+         *      |  /|
+         *      | / |
+         *      |/  |
+         *      3---2
+         *
+         *  colors and/or texs can be null. The resulting triangles should be passed to drawMesh(...).
+         */
+void MyCanvas::drawCubicQuad(const GPoint verts[12], const GColor colors[4], const GPoint texs[4],
+              int level, const GPaint& paint) {
+
+  if (level == 0) {
+    int indices[6] = {0, 1, 3, 1, 2, 3};
+
+    // drawMesh(verts, colors, texs, 6, indices, paint);                                                                                                                                
+    return;
+  }
+
+  assert(level >= 1);
+
+  int quadCount = pow(level + 1, 2);
+
+  float incr = 1.0f / (level + 1);
+  
+  GPoint pts[quadCount * 4];
+  GColor cols[quadCount * 4];
+  GPoint texts[quadCount * 4];
+
+  int indices[quadCount * 6];
+
+  int c = 0;
+  int idx = 0;
+  float v = 0.0f;
+
+  for (int i = 0; i <= level; i++) {
+    float u = 0.0f;
+
+    for (int j = 0; j <= level; j++) {
+      pts[c]   = pt_coons_avg(u,      v,      verts);
+      pts[c+1] = pt_coons_avg(u+incr, v,      verts);
+      pts[c+2] = pt_coons_avg(u,      v+incr, verts);
+      pts[c+3] = pt_coons_avg(u+incr, v+incr, verts);
+
+      // pts[c]   = pt_weighted_avg(u,      v,      verts[0], verts[3], verts[6], verts[9]);
+      // pts[c+1] = pt_weighted_avg(u+incr, v,      verts[0], verts[3], verts[6], verts[9]);
+      // pts[c+2] = pt_weighted_avg(u,      v+incr, verts[0], verts[3], verts[6], verts[9]);
+      // pts[c+3] = pt_weighted_avg(u+incr, v+incr, verts[0], verts[3], verts[6], verts[9]);
+
+      if (colors) {
+        cols[c]   = col_weighted_avg(u,      v,      colors[0], colors[1], colors[2], colors[3]);
+        cols[c+1] = col_weighted_avg(u+incr, v,      colors[0], colors[1], colors[2], colors[3]);
+        cols[c+2] = col_weighted_avg(u,      v+incr, colors[0], colors[1], colors[2], colors[3]);
+        cols[c+3] = col_weighted_avg(u+incr, v+incr, colors[0], colors[1], colors[2], colors[3]);
+      }
+
+      if (texs) {
+        texts[c]   = pt_weighted_avg(u,       v,      texs[0], texs[1], texs[2], texs[3]);
+        texts[c+1] = pt_weighted_avg(u+incr,  v,      texs[0], texs[1], texs[2], texs[3]);
+        texts[c+2] = pt_weighted_avg(u,      v+incr,  texs[0], texs[1], texs[2], texs[3]);
+        texts[c+3] = pt_weighted_avg(u+incr, v+incr,  texs[0], texs[1], texs[2], texs[3]);
+      }
+
+      indices[idx] = c;
+      indices[idx+1] = c+1;
+      indices[idx+2] = c+2;
+      indices[idx+3] = c+1;
+      indices[idx+4] = c+2;
+      indices[idx+5] = c+3;
+
+      u += incr;
+      c += 4;
+      idx += 6;
+    }
+
+    v += incr;
+  }
+
+  if (colors) {
+    texs ? drawMesh(pts, cols, texts, quadCount * 2, indices, paint) : drawMesh(pts, cols, nullptr, quadCount * 2, indices, paint);
+  } else if (texs) {
+    drawMesh(pts, nullptr, texts, quadCount * 2, indices, paint);
+  } else {
+    drawMesh(pts, nullptr, nullptr, quadCount * 2, indices, paint);
+  }
+
+}
+
 std::unique_ptr<GCanvas> GCreateCanvas(const GBitmap& device) {
   return std::unique_ptr<GCanvas>(new MyCanvas(device));
 }
 
 std::string GDrawSomething(GCanvas* canvas, GISize dim) {
-  GColor bg = GColor({ 1, 1, 1, 1 });
-  canvas->clear(bg);
+  // GColor bg = GColor({ 1, 1, 1, 1 });
+  // canvas->clear(bg);
 
   // create the bitmap
   GBitmap bm;
+  GPoint src[12] = {
+    {50, 50}, 
+      {100, 70}, {150, 60}, 
+    {200, 50}, 
+      {190, 100}, {210, 150},
+    {200, 200}, 
+      {160, 210}, {100, 220},
+    {50, 200},
+      {40, 170}, {30, 110}};
 
-  GPoint src[4] = {{5, 5}, {40, 25}, {10, 55}, {50, 45}};
-
-  for (int i = 0; i < 4; i++) {
-    GPoint pts[4] = {{src[0].x, src[0].y}, {src[2].x, src[2].y}, {src[3].x, src[3].y}, {src[1].x, src[1].y}};
-    GColor colors[4] = { 
+  GColor colors[4] = { 
       GColor::RGBA(1, .2, 0, 1), 
       GColor::RGBA(0, .5, .9, 1), 
       GColor::RGBA(.5, 0, .7, 1), 
       GColor::RGBA(0, .7, .6, 1) 
     }; 
 
-    for (int j = 0; j < 4; j++) {
-      pts[j].x += 50;       pts[j].y += 50;
-    }
+    GBitmap bitmap;
+    bitmap.readFromFile("apps/spock.png");
+    const float w = bitmap.width();
+    const float h = bitmap.height();
+
+    auto shader = GCreateBitmapShader(bitmap, GMatrix(), GTileMode::kMirror);
+
+    const GPoint texs[4] = {
+            {w, 0}, {2*w, 0}, {2*w, h}, {w, h},
+    };
+
+  // for (int i = 0; i < 4; i++) {
+  //   GPoint pts[4] = {{src[0].x, src[0].y}, {src[2].x, src[2].y}, {src[3].x, src[3].y}, {src[1].x, src[1].y}};
+  //   
+
+  //   for (int j = 0; j < 4; j++) {
+  //     pts[j].x += 50;       pts[j].y += 50;
+  //   }
 
     // create the shader, takes a bitmap and a local matrix (identity?)
-    canvas->drawQuad(pts, colors, nullptr, 12, GPaint());
-  }
+    
+  // }
+
+  // GPoint quadPts[4] = { src[0], src[3], src[6], src[9] };
+
+  // canvas->drawQuad(quadPts, colors, nullptr, 12, GPaint());
+  canvas->drawCubicQuad(src, colors, nullptr, 12, GPaint());
 
   // auto shader = GCreateBitmapShader(bm, GMatrix());
   // GPaint paint(shader.get());

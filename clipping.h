@@ -107,7 +107,7 @@ void clip_cubic_curve(const GBitmap& bm, std::vector<Segment> &segments, GPoint 
   
   float eLen = sqrt(e.x * e.x + e.y * e.y);
 
-  int num_segs = (int) ceil(sqrt((3 * eLen)));
+  int num_segs = (int) ceil(sqrt((3 * eLen) * 16));
   float dt = 1.0f / num_segs;
 
   GPoint prev = a;
@@ -211,4 +211,49 @@ GColor col_weighted_avg(float u, float v, GColor a, GColor b, GColor c, GColor d
 
 GPoint pt_weighted_avg(float u, float v, GPoint a, GPoint b, GPoint c, GPoint d) {
   return (1 - u) * (1 - v) * a + u * (1 - v) * b + u * v * c + (1 - u) * v * d;
+}
+
+GColor col_coons_avg(float u, float v, GColor a, GColor b, GColor c, GColor d) {
+  // GColor col = d * (1 - u) * v - b * (1 - v) * u - c * u * v;
+  GColor col = (1 - u) * (1 - v) * a + u * (1 - v) * b + u * v * c + (1 - u) * v * d;
+  col.r = col.r > 1.0f ? 1.0f : (col.r < 0.0f ? 0.0f : col.r);
+  col.g = col.g > 1.0f ? 1.0f : (col.g < 0.0f ? 0.0f : col.g);
+  col.b = col.b > 1.0f ? 1.0f : (col.b < 0.0f ? 0.0f : col.b);
+  col.a = col.a > 1.0f ? 1.0f : (col.a < 0.0f ? 0.0f : col.a);
+
+  return col;
+}
+
+GPoint pt_coons_avg(float u, float v, const GPoint pts[12]) {
+  if (u == 0.0f && v == 0.0f) return pts[0];
+  if (u == 1.0f && v == 0.0f) return pts[3];
+  if (u == 1.0f && v == 1.0f) return pts[6];
+  if (u == 0.0f && v == 1.0f) return pts[9];
+
+  // −P(0, 1)(1 − µ)ν − P(1, 0)µ(1 − ν) − P(1, 1)µν
+  GPoint top[4] = {pts[0], pts[1], pts[2], pts[3] };
+  GPoint right[4] = {pts[3], pts[4], pts[5], pts[6] };
+  GPoint bottom[4] = {pts[9], pts[8], pts[7], pts[6] };
+  GPoint left[4] = {pts[0], pts[11], pts[10], pts[9] };
+
+  if (u == 0.0f) return get_cubic_curve_point(left, v);
+  if (u == 1.0f) return get_cubic_curve_point(right, v);
+  if (v == 0.0f) return get_cubic_curve_point(top, u);
+  if (v == 1.0f) return get_cubic_curve_point(bottom, u);
+
+  GPoint a = get_cubic_curve_point(top, u);
+  GPoint b = get_cubic_curve_point(bottom, u);
+
+  GPoint ab = (a + b) * 0.5f;
+
+  GPoint c = get_cubic_curve_point(left, v);
+  GPoint d = get_cubic_curve_point(right, v);
+
+  GPoint cd = (c + d) * 0.5f;
+
+  GPoint mid = pt_weighted_avg(u, v, pts[0], pts[3], pts[6], pts[9]);
+
+  return (ab + cd) - mid;
+ 
+  // return (ab + cd + mid) * (1/3);
 }

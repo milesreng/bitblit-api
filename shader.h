@@ -404,6 +404,46 @@ GShader* GCreateTriangleGradient(const GPoint pts[], const GColor colors[]) {
   return new TriangleGradientShader(pts, colors);
 }
 
+static inline uint8_t GDivide255(unsigned prod) {
+  return (prod + 128) * 257 >> 16;
+}
+
+class ComposeShader : public GShader {
+  GShader* fShader1;
+  GShader* fShader2;
+
+public:
+    ComposeShader(GShader* shader1, GShader* shader2)
+        : fShader1(shader1), fShader2(shader2) {}
+
+    bool isOpaque() override { return fShader1->isOpaque() && fShader2->isOpaque(); }
+
+    bool setContext(const GMatrix& ctm) override {
+        return fShader1->setContext(ctm) && fShader2->setContext(ctm);
+    }
+    
+    void shadeRow(int x, int y, int count, GPixel row[]) override {
+      GPixel row1[count];
+      GPixel row2[count];
+
+      fShader1->shadeRow(x, y, count, row1);
+      fShader2->shadeRow(x, y, count, row2);
+
+      for (int i = 0; i < count; i++) {
+        int r = GRoundToInt(GDivide255(GPixel_GetR(row1[i]) * GPixel_GetR(row2[i])));
+        int g = GRoundToInt(GDivide255(GPixel_GetG(row1[i]) * GPixel_GetG(row2[i])));
+        int b = GRoundToInt(GDivide255(GPixel_GetB(row1[i]) * GPixel_GetB(row2[i])));
+        int a = GRoundToInt(GDivide255(GPixel_GetA(row1[i]) * GPixel_GetA(row2[i])));
+
+        row[i] = GPixel_PackARGB(a, r, g, b);
+      }
+    }
+};
+
+std::unique_ptr<GShader> GCreateComposeShader(GShader* sh1, GShader* sh2) {
+  return std::unique_ptr<GShader>(new ComposeShader(sh1, sh2));
+}
+
 class ProxyShader : public GShader {
   GShader* fRealShader;
   GMatrix  fExtraTransform;

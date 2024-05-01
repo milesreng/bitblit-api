@@ -28,6 +28,9 @@ class MyCanvas : public GCanvas {
     void drawQuad(const GPoint verts[4], const GColor colors[4], const GPoint texs[4],
                           int level, const GPaint&) override;
 
+    void drawCubicQuad(const GPoint verts[12], const GColor colors[4], const GPoint texs[4],
+                          int level, const GPaint&) override;
+
   private:
     const GBitmap fDevice;
     std::vector<GMatrix> ctm {};

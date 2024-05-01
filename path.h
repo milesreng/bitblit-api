@@ -89,8 +89,6 @@ GPoint get_quad_curve_point(const GPoint* pts, float t) {
 }
 
 GPoint get_cubic_curve_point(const GPoint* pts, float t) {
-
-
   float x = pts[0].x * pow(1-t, 3) + 3 * pts[1].x * t * pow(1-t, 2) + 3 * pts[2].x * (1-t) * t * t + pts[3].x * pow(t, 3);
   float y = pts[0].y * pow(1-t, 3) + 3 * pts[1].y * t * pow(1-t, 2) + 3 * pts[2].y * (1-t) * t * t + pts[3].y * pow(t, 3);
 
@@ -174,15 +172,17 @@ void GPath::transform(const GMatrix& m) {
      *  t...1 is stored in dst[2..4]
      */
 void GPath::ChopQuadAt(const GPoint src[3], GPoint dst[5], float t) {
-  assert(t >= 0.0f && t <= 1.0f);
+  // assert(t >= 0.0f && t <= 1.0f);
 
   // Q(t)       =   A       (1 - t)   ^  2     +  2     B      t   (1 - t)  +  C      t   ^ 2
-  GPoint chopAt = get_quad_curve_point(src, t);
+  GPoint q = src[0] + (src[1] - src[0]) * t;
+  GPoint r = src[1] + (src[2] - src[1]) * t;
+  GPoint s = q + (r - q) * t;
 
   dst[0] = src[0];
-  dst[1] = src[0] * t + src[1] * (1-t);
-  dst[2] = chopAt;
-  dst[3] = src[1] * t + src[2] * (1-t);
+  dst[1] = q;
+  dst[2] = s;
+  dst[3] = r;
   dst[4] = src[2];
 
 }
@@ -194,7 +194,7 @@ void GPath::ChopQuadAt(const GPoint src[3], GPoint dst[5], float t) {
      *  t...1 is stored in dst[3..6]
      */
 void GPath::ChopCubicAt(const GPoint src[4], GPoint dst[7], float t) {
-  assert(t >= 0.0f && t <= 1.0f);
+  // assert(t >= 0.0f && t <= 1.0f);
 
   GPoint chopAt = get_cubic_curve_point(src, t);
 
